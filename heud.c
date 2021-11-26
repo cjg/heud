@@ -56,7 +56,9 @@ int main(int argc, char **argv) {
 				events[1].code = KEY_HOME;
 			}
 		}
-		emit_events(events, 3);
+		if (events[1].code != KEY_LEFTALT) {
+			emit_events(events, 3);
+		}
 	}
 	return 0;
 }
