@@ -1,5 +1,4 @@
 #include <stdio.h>
-// #include <sys/time.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
@@ -16,6 +15,9 @@ void init();
 void finalize();
 void grab_keyboard(const char *dev);
 void create_virtual_keyboard();
+void emit_event(struct input_event *event);
+void emit_events(struct input_event *event, int len);
+void capture_key_event(struct input_event *events);
 
 const char *event_type(unsigned short type);
 
@@ -36,27 +38,25 @@ int main(int argc, char **argv) {
 
 	int leftalt_pressed = 0;
 
-	struct input_event ev;
+	struct input_event events[3];
 	for (;;) {
-		read(kbd_fd, &ev, sizeof(ev));
-		if (ev.type == EV_KEY) {
-			// printf("key_code: %s\n", key_code(ev.code));
-			if (ev.code == KEY_LEFTALT) {
-				if (ev.value == 0) {
-					leftalt_pressed = 0;
-					printf("Alt_L released\n");
-				} else if (leftalt_pressed == 0) {
-					leftalt_pressed = 1;
-					printf("Alt_L pressed\n");
-				}
-			}
-			if (leftalt_pressed == 1) {
-				if (ev.code == KEY_LEFT) {
-					printf("Replacing LEFT with HOME\n");
-				}
+ 		capture_key_event(events);
+		if (events[1].code == KEY_LEFTALT) {
+			if (events[1].value == 0) {
+				leftalt_pressed = 0;
+				printf("Alt_L released\n");
+			} else if (leftalt_pressed == 0) {
+				leftalt_pressed = 1;
+				printf("Alt_L pressed\n");
 			}
 		}
-		libevdev_uinput_write_event(virtkbd_dev, ev.type, ev.code, ev.value);
+		if (leftalt_pressed == 1) {
+			if (events[1].code == KEY_LEFT) {
+				printf("Replacing LEFT with HOME\n");
+				events[1].code = KEY_HOME;
+			}
+		}
+		emit_events(events, 3);
 	}
 	return 0;
 }
@@ -103,5 +103,49 @@ void create_virtual_keyboard() {
 	if (libevdev_uinput_create_from_device(kbd_dev, uinput_fd,
 					       &virtkbd_dev) != 0) {
 		fprintf(stderr, "Error creating virtual keyboard\n");
+	}
+}
+
+void emit_event(struct input_event *event) {
+	libevdev_uinput_write_event(virtkbd_dev,
+				    event->type,
+				    event->code,
+				    event->value);
+}
+
+void emit_events(struct input_event *event, int len) {
+	int i;
+	for (i = 0; i < len; i++) {
+		emit_event(event + i);
+	}
+}
+
+int capture_event(struct input_event *event, unsigned type, int retry) {
+	for (;;) {
+		read(kbd_fd, event, sizeof(struct input_event));
+		if (event->type == type) {
+			return 0;
+		}
+		// unexpected event just passing it away
+		emit_event(event);
+		if (!retry) {
+			return -1;
+		}
+	}
+}
+
+
+void capture_key_event(struct input_event *events) {
+	for (;;) {
+		capture_event(events, EV_MSC, 1);
+		if (capture_event(events + 1, EV_KEY, 0) != 0) {
+			emit_event(events);
+			continue;
+		}
+		if (capture_event(events + 2, EV_SYN, 0) != 0) {
+			emit_events(events, 2);
+			continue;
+		}
+		break;
 	}
 }
