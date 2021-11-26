@@ -18,6 +18,7 @@ void create_virtual_keyboard();
 void emit_event(struct input_event *event);
 void emit_events(struct input_event *event, int len);
 void capture_key_event(struct input_event *events);
+unsigned int replace_key(unsigned int code, unsigned int *modifier);
 
 const char *event_type(unsigned short type);
 
@@ -41,53 +42,37 @@ int main(int argc, char **argv) {
 	int value;
 
 	struct input_event events[3];
+	unsigned int replacement, modifier;
+	int is_press = 0;
+	int is_release = 0;
+
 	for (;;) {
 		capture_key_event(events);
+
+		is_press = events[1].value == 1;
+		is_release = events[1].value == 0;
 		code = events[1].code;
+		
 		if (events[1].code == KEY_LEFTALT) {
-			if (events[1].value == 0) {
-				leftalt_pressed = 0;
-				printf("Alt_L released\n");
-			} else if (leftalt_pressed == 0) {
-				leftalt_pressed = 1;
-				printf("Alt_L pressed\n");
-			}
+			leftalt_pressed = is_press; 
+			continue;
 		}
 
 		if (leftalt_pressed == 1) {
-			if (events[1].code == KEY_LEFT) {
-				printf("Replacing LEFT with HOME\n");
-				code = KEY_HOME;
+			replacement = replace_key(events[1].code, &modifier);
+			if (is_press && modifier != 0) {
+				events[1].code = modifier;
+				emit_events(events, 3);
 			}
-		}
-	  
-
-		if (leftalt_pressed &&
-		    code != events[1].code &&
-		    code != KEY_LEFTALT) {
-			printf("release Alt_L\n");
-			// release Alt_l
-			events[1].code = KEY_LEFTALT;
-			value = events[1].value;
-			events[1].value = 0;
-
+			events[1].code = replacement;
 			emit_events(events, 3);
-			events[1].code = code;
-			events[1].value = value;
-			code = KEY_RESERVED;
-		}
-		
+			if (is_release && modifier != 0) {
+				events[1].code = modifier;
+				emit_events(events, 3);
+			}
+			continue;
+		} 
 		emit_events(events, 3);
-
-		if (leftalt_pressed && code != events[1].code) {
-			printf("press Alt_L\n");
-			// press Alt_l
-			events[1].code = KEY_LEFTALT;
-			value = events[1].value;
-			events[1].value = 1;
-
-			emit_events(events, 3);
-		}
 
 	}
 	return 0;
@@ -180,4 +165,20 @@ void capture_key_event(struct input_event *events) {
 		}
 		break;
 	}
+}
+
+unsigned int replace_key(unsigned int code, unsigned int *modifier) {
+	*modifier = 0;
+	switch(code) {
+	case KEY_LEFT:
+		return KEY_HOME;
+	case KEY_RIGHT:
+		return KEY_END;
+	case KEY_UP:
+		return KEY_PAGEUP;
+	case KEY_DOWN:
+		return KEY_PAGEDOWN;
+	}
+	*modifier = KEY_LEFTALT;
+	return code;
 }
