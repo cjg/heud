@@ -37,10 +37,13 @@ int main(int argc, char **argv) {
 	create_virtual_keyboard();
 
 	int leftalt_pressed = 0;
+	unsigned int code;
+	int value;
 
 	struct input_event events[3];
 	for (;;) {
- 		capture_key_event(events);
+		capture_key_event(events);
+		code = events[1].code;
 		if (events[1].code == KEY_LEFTALT) {
 			if (events[1].value == 0) {
 				leftalt_pressed = 0;
@@ -50,15 +53,42 @@ int main(int argc, char **argv) {
 				printf("Alt_L pressed\n");
 			}
 		}
+
 		if (leftalt_pressed == 1) {
 			if (events[1].code == KEY_LEFT) {
 				printf("Replacing LEFT with HOME\n");
-				events[1].code = KEY_HOME;
+				code = KEY_HOME;
 			}
 		}
-		if (events[1].code != KEY_LEFTALT) {
+	  
+
+		if (leftalt_pressed &&
+		    code != events[1].code &&
+		    code != KEY_LEFTALT) {
+			printf("release Alt_L\n");
+			// release Alt_l
+			events[1].code = KEY_LEFTALT;
+			value = events[1].value;
+			events[1].value = 0;
+
+			emit_events(events, 3);
+			events[1].code = code;
+			events[1].value = value;
+			code = KEY_RESERVED;
+		}
+		
+		emit_events(events, 3);
+
+		if (leftalt_pressed && code != events[1].code) {
+			printf("press Alt_L\n");
+			// press Alt_l
+			events[1].code = KEY_LEFTALT;
+			value = events[1].value;
+			events[1].value = 1;
+
 			emit_events(events, 3);
 		}
+
 	}
 	return 0;
 }
