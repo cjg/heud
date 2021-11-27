@@ -72,7 +72,8 @@ int main(int agc, char **argv) {
 	
 	for (;;) {
 		read(kbd_fd, &event, sizeof(event));
-		if (event.type != EV_KEY || event.value > 1) {
+		if (event.type != EV_KEY || event.value > 1 ||
+		    event.code == KEY_CAPSLOCK) {
 			continue;
 		}
 		if (event.code == KEY_LEFTALT) {
