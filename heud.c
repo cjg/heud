@@ -11,6 +11,8 @@ struct libevdev *kbd_dev;
 int uinput_fd;
 struct libevdev_uinput *virtkbd_dev;
 
+int leftalt_on;
+
 static void init();
 static void cleanup();
 static void grab_keyboard(const char *dev);
@@ -46,8 +48,10 @@ int main(int argc, char **argv) {
 		}
 		
 		if (event.code == KEY_LEFTALT) {
-			leftalt_pressed = is_press; 
-			continue;
+			leftalt_pressed = is_press;
+			if (is_press || !leftalt_on) {
+				continue;
+			}
 		}
 
 		if (leftalt_pressed == 1) {
@@ -62,6 +66,7 @@ int main(int argc, char **argv) {
 				event.code = modifier;
 				emit_event(&event);
 			}
+	 
 			continue;
 		} 
 		emit_event(&event);
@@ -73,6 +78,7 @@ int main(int argc, char **argv) {
 static void init() {
 	kbd_fd = 1;
 	uinput_fd = -1;
+	leftalt_on = 0;
 	atexit(cleanup);
 }
 
@@ -118,6 +124,19 @@ static void create_virtual_keyboard() {
 }
 
 static void emit_event(struct input_event *event) {
+	if (event->type == EV_KEY && event->code == KEY_LEFTALT) {
+		if (event->value == 1) {
+			if (leftalt_on) {
+				return;
+			}
+			leftalt_on = 1;
+		} else {
+			if (!leftalt_on) {
+				return;
+			}
+			leftalt_on = 0;
+		}
+	}
 	libevdev_uinput_write_event(virtkbd_dev,
 				    event->type,
 				    event->code,
@@ -151,8 +170,6 @@ static unsigned int replace_key(unsigned int code, unsigned int *modifier) {
 		return KEY_PAGEUP;
 	case KEY_DOWN:
 		return KEY_PAGEDOWN;
-	case KEY_X:
-		return KEY_CUT;
 	case KEY_C:
 		return KEY_COPY;
 	case KEY_V:
