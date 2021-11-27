@@ -16,8 +16,8 @@ void finalize();
 void grab_keyboard(const char *dev);
 void create_virtual_keyboard();
 void emit_event(struct input_event *event);
-void emit_events(struct input_event *event, int len);
 void capture_key_event(struct input_event *events);
+int capture_event(struct input_event *event, unsigned type, int retry);
 unsigned int replace_key(unsigned int code, unsigned int *modifier);
 
 const char *event_type(unsigned short type);
@@ -41,38 +41,42 @@ int main(int argc, char **argv) {
 	unsigned int code;
 	int value;
 
-	struct input_event events[3];
+	struct input_event event;
 	unsigned int replacement, modifier;
 	int is_press = 0;
 	int is_release = 0;
-
+	
 	for (;;) {
-		capture_key_event(events);
+		capture_event(&event, EV_KEY, 1);
 
-		is_press = events[1].value == 1;
-		is_release = events[1].value == 0;
-		code = events[1].code;
+		is_press = event.value == 1;
+		is_release = event.value == 0;
+
+		if (!is_press && !is_release) {
+			continue;
+		}
+		code = event.code;
 		
-		if (events[1].code == KEY_LEFTALT) {
+		if (event.code == KEY_LEFTALT) {
 			leftalt_pressed = is_press; 
 			continue;
 		}
 
 		if (leftalt_pressed == 1) {
-			replacement = replace_key(events[1].code, &modifier);
+			replacement = replace_key(event.code, &modifier);
 			if (is_press && modifier != 0) {
-				events[1].code = modifier;
-				emit_events(events, 3);
+				event.code = modifier;
+				emit_event(&event);
 			}
-			events[1].code = replacement;
-			emit_events(events, 3);
+			event.code = replacement;
+			emit_event(&event);
 			if (is_release && modifier != 0) {
-				events[1].code = modifier;
-				emit_events(events, 3);
+				event.code = modifier;
+				emit_event(&event);
 			}
 			continue;
 		} 
-		emit_events(events, 3);
+		emit_event(&event);
 
 	}
 	return 0;
@@ -97,7 +101,7 @@ void grab_keyboard(const char *dev) {
 		fprintf(stderr, "Error opening keyboard at '%s'\n", dev);
 		exit(-1);
 	}
-	
+
 	int grab = 1;
 	if (ioctl(kbd_fd, EVIOCGRAB, &grab) != 0) {
 		fprintf(stderr, "Error setting exclusive mode to keyboard\n");
@@ -124,10 +128,18 @@ void create_virtual_keyboard() {
 }
 
 void emit_event(struct input_event *event) {
+	printf("Emitting type: 0x%x code: %d value: %d\n",
+	       event->type, event->code, event->value);
+
+
 	libevdev_uinput_write_event(virtkbd_dev,
 				    event->type,
 				    event->code,
 				    event->value);
+	libevdev_uinput_write_event(virtkbd_dev,
+				    EV_SYN,
+				    SYN_REPORT,
+				    0);
 }
 
 void emit_events(struct input_event *event, int len) {
@@ -143,8 +155,8 @@ int capture_event(struct input_event *event, unsigned type, int retry) {
 		if (event->type == type) {
 			return 0;
 		}
-		// unexpected event just passing it away
-		emit_event(event);
+		//printf("Expected 0x%x received 0x%x\n", type, event->type);
+		//emit_event(event);
 		if (!retry) {
 			return -1;
 		}
@@ -178,6 +190,12 @@ unsigned int replace_key(unsigned int code, unsigned int *modifier) {
 		return KEY_PAGEUP;
 	case KEY_DOWN:
 		return KEY_PAGEDOWN;
+	case KEY_X:
+		return KEY_CUT;
+	case KEY_C:
+		return KEY_COPY;
+	case KEY_V:
+		return KEY_PASTE;
 	}
 	*modifier = KEY_LEFTALT;
 	return code;
